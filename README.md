@@ -6,8 +6,8 @@ The SD can be interfaced with the ESP32 using either the dedicated SDMMC or the 
 If using the SPI interface, the pins should be defined in the application's `mos.yml`
 The default configured pins are those used by the Lolin32 Pro board.
 
-## API
-API is described in `mgos_sd.h`.
+## C API
+The C API is described in `mgos_sd.h`.
 
 ## RPC
 RPC handlers are also available:

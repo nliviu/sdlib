@@ -84,10 +84,11 @@ static struct mgos_sd* mgos_sd_common_init(const char* mount_point, bool format_
   if (ret != ESP_OK) {
     if (ret == ESP_FAIL) {
       LOG(LL_INFO, ("Failed to mount filesystem. "
-        "If you want the card to be formatted, set format_if_mount_failed = true."));
+          "If you want the card to be formatted, set format_if_mount_failed = true."));
     } else {
-      LOG(LL_INFO, ("Failed to initialize the card (%d). "
-        "Make sure SD card lines have pull-up resistors in place.", ret));
+      const char *err = esp_err_to_name(ret);
+      LOG(LL_INFO, ("Failed to initialize the card (%d - %s). "
+          "Make sure SD card lines have pull-up resistors in place.", ret, err));
     }
     return NULL;
   }
@@ -157,11 +158,11 @@ void mgos_sd_print_info(struct mgos_sd* sd, struct json_out * out) {
   if ((NULL != sd)&& (NULL != out)) {
     const sdmmc_card_t* card = sd->card;
     json_printf(out, "{Name: %Q, Type: %Q, Speed: %Q, Size: %llu, SizeUnit:%Q, ",
-      card->cid.name, ((card->ocr & SD_OCR_SDHC_CAP) ? "SDHC/SDXC" : "SDSC"),
-      ((card->csd.tr_speed > 25000000) ? "high speed" : "default speed"),
-      (((uint64_t) card->csd.capacity) * card->csd.sector_size / (1024 * 1024)), "MB");
+                card->cid.name, ((card->ocr & SD_OCR_SDHC_CAP) ? "SDHC/SDXC" : "SDSC"),
+                ((card->csd.tr_speed > 25000000) ? "high speed" : "default speed"),
+                (((uint64_t) card->csd.capacity) * card->csd.sector_size / (1024 * 1024)), "MB");
     json_printf(out, "CSD:{ver:%d, sector_size:%d, capacity:%d, read_bl_len:%d}, ",
-      card->csd.csd_ver, card->csd.sector_size, card->csd.capacity, card->csd.read_block_len);
+                card->csd.csd_ver, card->csd.sector_size, card->csd.capacity, card->csd.read_block_len);
     json_printf(out, "SCR:{sd_spec:%d, bus_width:%d}}", card->scr.sd_spec, card->scr.bus_width);
   }
 }
@@ -190,7 +191,7 @@ bool mgos_sd_list(struct mgos_sd* sd, const char* path, struct json_out * out) {
     isDir = S_ISDIR(st.st_mode) ? true : false;
     if (!isDir) {
       json_printf(out, "[{name:%Q, size:%llu, directory:%B}]",
-        buf, (uint64_t) st.st_size, false);
+                  buf, (uint64_t) st.st_size, false);
       return true;
     }
   } else {

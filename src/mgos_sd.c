@@ -154,6 +154,10 @@ void mgos_sd_close(struct mgos_sd * sd) {
   }
 }
 
+struct mgos_sd* mgos_sd_get_global() {
+  return &s_card;
+}
+
 void mgos_sd_print_info(struct mgos_sd* sd, struct json_out * out) {
   if ((NULL != sd)&& (NULL != out)) {
     const sdmmc_card_t* card = sd->card;

@@ -47,6 +47,12 @@ struct mgos_sd* mgos_sd_open_sdmmc(const char* mount_point, bool format_if_mount
 struct mgos_sd* mgos_sd_open_spi(const char* mount_point, bool format_if_mount_failed);
 
 /*
+ * Get the global instance.
+ * Valid only after mgos_sd_open_*
+ */
+struct mgos_sd* mgos_sd_get_global();
+
+/*
  * Closes the sd and deletes the `struct mgos_sd*`
  */
 void mgos_sd_close(struct mgos_sd* sd);

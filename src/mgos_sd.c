@@ -32,10 +32,12 @@ struct mgos_sd {
 
 static struct mgos_sd* s_card = NULL;
 
-static bool get_size_used(uint64_t* totalSize, const char* folder);
+static bool get_size_used(uint64_t* total_size, const char* folder);
 
-static struct mgos_sd* mgos_sd_common_init(const char* mount_point, bool format_if_mount_failed,
-                                           const sdmmc_host_t* host, const void* slot_config) {
+static struct mgos_sd* mgos_sd_common_init(const char* mount_point,
+                                           bool format_if_mount_failed,
+                                           const sdmmc_host_t* host,
+                                           const void* slot_config) {
   // Options for mounting the filesystem.
   // If format_if_mount_failed is set to true, SD card will be partitioned and
   // formatted in case when mounting fails.
@@ -71,11 +73,11 @@ static struct mgos_sd* mgos_sd_common_init(const char* mount_point, bool format_
 
   if (ret != ESP_OK) {
     if (ret == ESP_FAIL) {
-      LOG(LL_INFO, ("Failed to mount filesystem. "
+      LOG(LL_ERROR, ("Failed to mount filesystem. "
           "If you want the card to be formatted, set format_if_mount_failed = true."));
     } else {
       const char *err = esp_err_to_name(ret);
-      LOG(LL_INFO, ("Failed to initialize the card (%d - %s). "
+      LOG(LL_ERROR, ("Failed to initialize the card (%d - %s). "
           "Make sure SD card lines have pull-up resistors in place.", ret, err));
     }
     return NULL;
@@ -90,7 +92,8 @@ static struct mgos_sd* mgos_sd_common_init(const char* mount_point, bool format_
   return s_card;
 }
 
-struct mgos_sd* mgos_sd_open_sdmmc(const char* mount_point, bool format_if_mount_failed) {
+static struct mgos_sd* mgos_sd_open_sdmmc(const char* mount_point,
+                                          bool format_if_mount_failed) {
   LOG(LL_INFO, ("Using SDMMC peripheral"));
 
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
@@ -113,7 +116,8 @@ struct mgos_sd* mgos_sd_open_sdmmc(const char* mount_point, bool format_if_mount
   return mgos_sd_common_init(mount_point, format_if_mount_failed, &host, &slot_config);
 }
 
-struct mgos_sd* mgos_sd_open_spi(const char* mount_point, bool format_if_mount_failed) {
+static struct mgos_sd* mgos_sd_open_spi(const char* mount_point,
+                                        bool format_if_mount_failed) {
   LOG(LL_INFO, ("Using SPI peripheral"));
 
   sdmmc_host_t host = SDSPI_HOST_DEFAULT();
@@ -125,11 +129,23 @@ struct mgos_sd* mgos_sd_open_spi(const char* mount_point, bool format_if_mount_f
   // This initializes the slot without card detect (CD) and write protect (WP) signals.
   // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
 
-  return mgos_sd_common_init(mount_point, format_if_mount_failed, &host, &slot_config);
+  return mgos_sd_common_init(mount_point, format_if_mount_failed, &host,
+                             &slot_config);
 }
 
-void mgos_sd_close(struct mgos_sd * sd) {
-  if (NULL != sd && (sd == s_card)) {
+struct mgos_sd* mgos_sd_open(bool sdmmc, const char* mount_point,
+                             bool format_if_mount_failed) {
+  if (NULL != s_card) {
+    LOG(LL_ERROR, ("SD already created. Returns the existing instance "
+        "mounted at %s", s_card->mount_point));
+    return s_card;
+  }
+  return sdmmc ? mgos_sd_open_sdmmc(mount_point, format_if_mount_failed)
+    : mgos_sd_open_spi(mount_point, format_if_mount_failed);
+}
+
+void mgos_sd_close() {
+  if (NULL != s_card) {
     // All done, unmount partition and disable SDMMC or SPI peripheral
     esp_vfs_fat_sdmmc_unmount();
     if (NULL != s_card->mount_point) {
@@ -144,34 +160,35 @@ struct mgos_sd* mgos_sd_get_global() {
   return s_card;
 }
 
-void mgos_sd_print_info(struct mgos_sd* sd, struct json_out * out) {
-  if ((NULL != sd)&& (NULL != out)) {
-    const sdmmc_card_t* card = sd->card;
+void mgos_sd_print_info(struct json_out * out) {
+  if ((NULL != s_card)&& (NULL != out)) {
+    const sdmmc_card_t* card = s_card->card;
     json_printf(out, "{Name: %Q, Type: %Q, Speed: %Q, Size: %llu, SizeUnit:%Q, ",
                 card->cid.name, ((card->ocr & SD_OCR_SDHC_CAP) ? "SDHC/SDXC" : "SDSC"),
                 ((card->csd.tr_speed > 25000000) ? "high speed" : "default speed"),
                 (((uint64_t) card->csd.capacity) * card->csd.sector_size / (1024 * 1024)), "MB");
     json_printf(out, "CSD:{ver:%d, sector_size:%d, capacity:%d, read_bl_len:%d}, ",
-                card->csd.csd_ver, card->csd.sector_size, card->csd.capacity, card->csd.read_block_len);
-    json_printf(out, "SCR:{sd_spec:%d, bus_width:%d}}", card->scr.sd_spec, card->scr.bus_width);
+                card->csd.csd_ver, card->csd.sector_size, card->csd.capacity,
+                card->csd.read_block_len);
+    json_printf(out, "SCR:{sd_spec:%d, bus_width:%d}}", card->scr.sd_spec,
+                card->scr.bus_width);
   }
 }
 
-const char* mgos_sd_get_mount_point(struct mgos_sd * sd) {
-  return (NULL != sd) ? sd->mount_point : NULL;
+const char* mgos_sd_get_mount_point() {
+  return (NULL != s_card) ? s_card->mount_point : NULL;
 }
 
-bool mgos_sd_list(struct mgos_sd* sd, const char* path, struct json_out * out) {
-  if (NULL == sd) {
+bool mgos_sd_list(const char* path, struct json_out * out) {
+  if (NULL == s_card) {
     return false;
   }
 
   char buf[256];
-  snprintf(buf, sizeof (buf), "%s/%s", sd->mount_point, ((NULL == path) ? "" : path));
+  snprintf(buf, sizeof (buf), "%s/%s", s_card->mount_point, ((NULL == path) ? "" : path));
   while ('/' == buf[strlen(buf) - 1]) {
     buf[strlen(buf) - 1] = '\0';
   }
-  LOG(LL_INFO, ("buf: %s", buf));
 
   //check if dir or file
   bool isDir = false;
@@ -186,13 +203,13 @@ bool mgos_sd_list(struct mgos_sd* sd, const char* path, struct json_out * out) {
     }
   } else {
     //error
-    LOG(LL_INFO, ("Could not stat %s", buf));
+    LOG(LL_ERROR, ("Could not stat %s", buf));
     return false;
   }
 
   DIR* dir = opendir(buf);
   if (NULL == dir) {
-    LOG(LL_INFO, ("Could not open %s", buf));
+    LOG(LL_ERROR, ("Could not open %s", buf));
     return false;
   }
 
@@ -203,7 +220,6 @@ bool mgos_sd_list(struct mgos_sd* sd, const char* path, struct json_out * out) {
   struct dirent *entry = readdir(dir);
   while (NULL != entry) {
     snprintf(file_path, sizeof (file_path), "%s/%s", buf, entry->d_name);
-    LOG(LL_INFO, ("file_path: %s", file_path));
     if (0 == mg_stat(file_path, &st)) {
       uint64_t size = st.st_size;
       isDir = S_ISDIR(st.st_mode);
@@ -217,7 +233,7 @@ bool mgos_sd_list(struct mgos_sd* sd, const char* path, struct json_out * out) {
       first = false;
       entry = readdir(dir);
     } else {
-      LOG(LL_INFO, ("Could not stat %s", buf));
+      LOG(LL_ERROR, ("Could not stat %s", buf));
       return false;
     }
   }
@@ -227,11 +243,11 @@ bool mgos_sd_list(struct mgos_sd* sd, const char* path, struct json_out * out) {
   return true;
 }
 
-uint64_t mgos_sd_get_fs_size(struct mgos_sd* sd, enum mgos_sd_fs_unit unit) {
-  if (NULL == sd) {
+uint64_t mgos_sd_get_fs_size(enum mgos_sd_fs_unit unit) {
+  if (NULL == s_card) {
     return 0;
   }
-  uint64_t size = sd->size;
+  uint64_t size = s_card->size;
   switch (unit) {
       //case SD_FS_UNIT_GIGABYTES:
       //    size /= 1024;
@@ -245,8 +261,8 @@ uint64_t mgos_sd_get_fs_size(struct mgos_sd* sd, enum mgos_sd_fs_unit unit) {
   return size;
 }
 
-bool get_size_used(uint64_t* totalSize, const char* folder) {
-  char fullPath[256];
+bool get_size_used(uint64_t* total_size, const char* folder) {
+  char full_path[256];
   struct stat buffer;
   int exists;
   bool resp = true;
@@ -257,50 +273,47 @@ bool get_size_used(uint64_t* totalSize, const char* folder) {
     return false;
   }
 
-  struct dirent* dirData = readdir(dir);
-  while (NULL != dirData) {
-    if (dirData->d_type == DT_DIR) {
-      if (dirData->d_name[0] != '.') {
-        //LOG(LL_INFO, ("%s is a directory", dirData->d_name));
-        snprintf(fullPath, sizeof (fullPath), "%s/%s", folder, dirData->d_name);
-        //LOG(LL_INFO, ("Enter directory %s", dirData->d_name));
-        if (false == get_size_used(totalSize, fullPath)) {
+  struct dirent* dir_data = readdir(dir);
+  while (NULL != dir_data) {
+    if (dir_data->d_type == DT_DIR) {
+      if (dir_data->d_name[0] != '.') {
+        snprintf(full_path, sizeof (full_path), "%s/%s", folder, dir_data->d_name);
+        if (false == get_size_used(total_size, full_path)) {
           resp = false;
         }
       }
     } else {
-      snprintf(fullPath, sizeof (fullPath), "%s/%s", folder, dirData->d_name);
-      exists = stat(fullPath, &buffer);
+      snprintf(full_path, sizeof (full_path), "%s/%s", folder, dir_data->d_name);
+      exists = stat(full_path, &buffer);
       if (exists < 0) {
-        LOG(LL_INFO, ("stat failed %s (%u)", fullPath, errno));
+        LOG(LL_ERROR, ("stat failed %s (%u)", full_path, errno));
         resp = false;
         continue;
       } else {
-        (*totalSize) += buffer.st_size;
-        //LOG(LL_INFO, ("%s size: %ld", fullPath, buffer.st_size));
+        (*total_size) += buffer.st_size;
       }
     }
-    dirData = readdir(dir);
+    dir_data = readdir(dir);
   }
   closedir(dir);
 
   return resp;
 }
 
-uint64_t mgos_sd_get_fs_used(struct mgos_sd* sd, enum mgos_sd_fs_unit unit) {
-  if (NULL == sd) {
+uint64_t mgos_sd_get_fs_used(enum mgos_sd_fs_unit unit) {
+  if (NULL == s_card) {
     return 0;
   }
-  uint64_t totalSize = 0;
-  get_size_used(&totalSize, sd->mount_point);
-  return totalSize;
+  uint64_t total_size = 0;
+  get_size_used(&total_size, s_card->mount_point);
+  return total_size;
 }
 
-uint64_t mgos_sd_get_fs_free(struct mgos_sd* sd, enum mgos_sd_fs_unit unit) {
-  if (NULL == sd) {
+uint64_t mgos_sd_get_fs_free(enum mgos_sd_fs_unit unit) {
+  if (NULL == s_card) {
     return 0;
   }
-  return mgos_sd_get_fs_size(sd, unit) - mgos_sd_get_fs_used(sd, unit);
+  return mgos_sd_get_fs_size(unit) - mgos_sd_get_fs_used(unit);
 }
 
 bool mgos_sdlib_init() {

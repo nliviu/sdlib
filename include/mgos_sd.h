@@ -33,59 +33,54 @@ enum mgos_sd_fs_unit {
 };
 
 /*
- * Initializes the SD card using the `sdmmc` device of ESP32,
+ * Initialize the SD card using the `sdmmc` or `spi` device of ESP32
  * mounts it at `mount_point`, format it if mount failed if `format_if_mount_failed` is true.
  * Returns an opaque pointer if success, NULL otherwise
+ * - sdmmc - true -> use `sdmmc`, false -> use `spi
  */
-struct mgos_sd* mgos_sd_open_sdmmc(const char* mount_point, bool format_if_mount_failed);
-
-/*
- * Initializes the SD card using the spi device of ESP32,
- * mounts it at `mount_point`, format it if mount failed if `format_if_mount_failed` is true.
- * Returns an opaque pointer if success, NULL otherwise
- */
-struct mgos_sd* mgos_sd_open_spi(const char* mount_point, bool format_if_mount_failed);
+struct mgos_sd* mgos_sd_open(bool sdmmc, const char* mount_point, bool format_if_mount_failed);
 
 /*
  * Get the global instance.
- * Valid only after mgos_sd_open_*
+ * Valid only after mgos_sd_open.
+ * Intended to be used by the rpc service.
  */
 struct mgos_sd* mgos_sd_get_global();
 
 /*
  * Closes the sd and deletes the `struct mgos_sd*`
  */
-void mgos_sd_close(struct mgos_sd* sd);
+void mgos_sd_close();
 
 /*
  * Prints information about the connected SD card
  */
-void mgos_sd_print_info(struct mgos_sd* sd, struct json_out* out);
+void mgos_sd_print_info(struct json_out* out);
 
 /*
  * Returns the mount point of the SD card.
  */
-const char* mgos_sd_get_mount_point(struct mgos_sd* sd);
+const char* mgos_sd_get_mount_point();
 
 /*
  * Lists the contents of the SD card.
  */
-bool mgos_sd_list(struct mgos_sd* sd, const char* path, struct json_out* out);
+bool mgos_sd_list(const char* path, struct json_out* out);
 
 /*
  * Returns the size of the SD card using the units defined by `enum mgos_sd_fs_unit`
  */
-uint64_t mgos_sd_get_fs_size(struct mgos_sd* sd, enum mgos_sd_fs_unit unit);
+uint64_t mgos_sd_get_fs_size(enum mgos_sd_fs_unit unit);
 
 /*
  * Returns the used size of the SD card using the units defined by `enum mgos_sd_fs_unit`
  */
-uint64_t mgos_sd_get_fs_used(struct mgos_sd* sd, enum mgos_sd_fs_unit unit);
+uint64_t mgos_sd_get_fs_used(enum mgos_sd_fs_unit unit);
 
 /*
  * Returns the free size of the SD card using the units defined by `enum mgos_sd_fs_unit`
  */
-uint64_t mgos_sd_get_fs_free(struct mgos_sd* sd, enum mgos_sd_fs_unit unit);
+uint64_t mgos_sd_get_fs_free(enum mgos_sd_fs_unit unit);
 
 #ifdef __cplusplus
 }

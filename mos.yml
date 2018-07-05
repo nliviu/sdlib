@@ -27,11 +27,6 @@ config_schema:
  - ["sd_spi.pin_mosi", "i", 15, {title: "SD SPI mosi"}] # hardwired for Lolin32 Pro
  - ["sd_spi.pin_clk", "i", 14, {title: "SD SPI clk"}]   # hardwired for Lolin32 Pro
  - ["sd_spi.pin_cs", "i", 13, {title: "SD SPI cs"}]     # hardwired for Lolin32 Pro
-
-# List of libraries used by this app, in order of initialisation
-libs:
-  - origin: https://github.com/mongoose-os-libs/rpc-common
-  
   
 build_vars:
   ESP_IDF_EXTRA_COMPONENTS: "${build_vars.ESP_IDF_EXTRA_COMPONENTS} fatfs sdmmc wear_levelling"

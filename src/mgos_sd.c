@@ -23,18 +23,6 @@
 #include "driver/sdmmc_types.h"
 
 #include "mgos_sd.h"
-#include "mgos_rpc.h"
-
-static void rpc_register_handlers();
-
-static void rpc_sd_get_mount_point(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args);
-
-static void rpc_sd_list(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args);
-static void rpc_sd_mkdir(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args);
-static void rpc_sd_info(struct mg_rpc_request_info *ri, void* cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args);
-static void rpc_sd_size(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args);
-static void rpc_sd_used(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args);
-static void rpc_sd_free(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args);
 
 struct mgos_sd {
   sdmmc_card_t* card;
@@ -99,8 +87,6 @@ static struct mgos_sd* mgos_sd_common_init(const char* mount_point, bool format_
   s_card->size = ((uint64_t) card->csd.capacity) * card->csd.sector_size;
   s_card->mount_point = strdup(mount_point);
 
-  //register RPC handlers
-  rpc_register_handlers();
   return s_card;
 }
 
@@ -155,7 +141,7 @@ void mgos_sd_close(struct mgos_sd * sd) {
 }
 
 struct mgos_sd* mgos_sd_get_global() {
-  return &s_card;
+  return s_card;
 }
 
 void mgos_sd_print_info(struct mgos_sd* sd, struct json_out * out) {
@@ -315,177 +301,6 @@ uint64_t mgos_sd_get_fs_free(struct mgos_sd* sd, enum mgos_sd_fs_unit unit) {
     return 0;
   }
   return mgos_sd_get_fs_size(sd, unit) - mgos_sd_get_fs_used(sd, unit);
-}
-
-void rpc_register_handlers() {
-  static bool rpc_init = false;
-
-  if (false == rpc_init) {
-    struct mg_rpc *c = mgos_rpc_get_global();
-    mg_rpc_add_handler(c, "SD.GetMountPoint", "", rpc_sd_get_mount_point, NULL);
-    mg_rpc_add_handler(c, "SD.List", "{path: %Q}", rpc_sd_list, NULL);
-    mg_rpc_add_handler(c, "SD.Mkdir", "{path: %Q}", rpc_sd_mkdir, NULL);
-    mg_rpc_add_handler(c, "SD.Info", "", rpc_sd_info, NULL);
-    mg_rpc_add_handler(c, "SD.Size", "", rpc_sd_size, NULL);
-    mg_rpc_add_handler(c, "SD.Used", "", rpc_sd_used, NULL);
-    mg_rpc_add_handler(c, "SD.Free", "", rpc_sd_free, NULL);
-    rpc_init = true;
-  }
-}
-
-void rpc_sd_get_mount_point(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args) {
-  if (NULL == s_card) {
-    //error
-    mg_rpc_send_errorf(ri, 400, "No SD found!");
-    return;
-  }
-  struct mbuf jsmb;
-  struct json_out jsout = JSON_OUT_MBUF(&jsmb);
-  mbuf_init(&jsmb, 0);
-  json_printf(&jsout, "{mount_point: %Q}", s_card->mount_point);
-
-  mg_rpc_send_responsef(ri, "%.*s", jsmb.len, jsmb.buf);
-
-  mbuf_free(&jsmb);
-  (void) cb_arg;
-  (void) fi;
-  (void) args;
-}
-
-void rpc_sd_list(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args) {
-  if (NULL == s_card) {
-    //error
-    mg_rpc_send_errorf(ri, 400, "No SD found!");
-    ri = NULL;
-    return;
-  }
-  //extract path
-  char *path = NULL;
-  json_scanf(args.p, args.len, "{path: %Q}", &path);
-
-  struct mbuf jsmb;
-  struct json_out jsout = JSON_OUT_MBUF(&jsmb);
-  mbuf_init(&jsmb, 0);
-  if (mgos_sd_list(s_card, path, &jsout)) {
-    LOG(LL_INFO, ("%.*s", jsmb.len, jsmb.buf));
-    mg_rpc_send_responsef(ri, "%.*s", jsmb.len, jsmb.buf);
-  } else {
-    mg_rpc_send_errorf(ri, 400, "Error!");
-  }
-  mbuf_free(&jsmb);
-  free(path);
-  (void) cb_arg;
-  (void) fi;
-  (void) args;
-}
-
-void rpc_sd_mkdir(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args) {
-  if (NULL == s_card) {
-    //error
-    mg_rpc_send_errorf(ri, 400, "No SD found!");
-    ri = NULL;
-    return;
-  }
-  //extract path
-  char *path = NULL;
-  json_scanf(args.p, args.len, "{path: %Q}", &path);
-
-  LOG(LL_INFO, ("format=%s, args=%.*s", ri->args_fmt, args.len, args.p));
-
-  if (NULL == path) {
-    mg_rpc_send_errorf(ri, 400, "Path is required");
-    ri = NULL;
-    return;
-  }
-
-  char buf[256];
-  snprintf(buf, sizeof (buf), "%s/%s", s_card->mount_point, path);
-  int result = mkdir(buf, 0777);
-  if (0 == result) {
-    //success
-    mg_rpc_send_responsef(ri, "{Created: %Q}", buf);
-  } else {
-
-    mg_rpc_send_errorf(ri, 400, "Could not create %s (%d)", buf, errno);
-  }
-  free(path);
-
-  (void) cb_arg;
-  (void) fi;
-  (void) args;
-}
-
-void rpc_sd_info(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args) {
-  if (NULL == s_card) {
-    //error
-    mg_rpc_send_errorf(ri, 400, "No SD found!");
-
-    return;
-  }
-
-  struct mbuf jsmb;
-  struct json_out jsout = JSON_OUT_MBUF(&jsmb);
-  mbuf_init(&jsmb, 0);
-
-  mgos_sd_print_info(s_card, &jsout);
-  LOG(LL_INFO, ("%.*s", jsmb.len, jsmb.buf));
-  mg_rpc_send_responsef(ri, "%.*s", jsmb.len, jsmb.buf);
-
-  mbuf_free(&jsmb);
-
-  (void) cb_arg;
-  (void) fi;
-  (void) args;
-}
-
-void rpc_sd_size(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args) {
-  if (NULL == s_card) {
-    //error
-    mg_rpc_send_errorf(ri, 400, "No SD found!");
-
-    return;
-  }
-  uint64_t size = mgos_sd_get_fs_size(s_card, SD_FS_UNIT_BYTES);
-  struct mbuf jsmb;
-  struct json_out jsout = JSON_OUT_MBUF(&jsmb);
-  mbuf_init(&jsmb, 0);
-  json_printf(&jsout, "{sd_size: %llu}", size);
-  mg_rpc_send_responsef(ri, "%.*s", jsmb.len, jsmb.buf);
-  mbuf_free(&jsmb);
-}
-
-void rpc_sd_used(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args) {
-  if (NULL == s_card) {
-    //error
-    mg_rpc_send_errorf(ri, 400, "No SD found!");
-
-    return;
-  }
-  struct mbuf jsmb;
-  struct json_out jsout = JSON_OUT_MBUF(&jsmb);
-  mbuf_init(&jsmb, 0);
-  uint64_t size = mgos_sd_get_fs_used(s_card, SD_FS_UNIT_BYTES);
-  json_printf(&jsout, "{sd_used: %llu}", size);
-  mg_rpc_send_responsef(ri, "%.*s", jsmb.len, jsmb.buf);
-
-  mbuf_free(&jsmb);
-}
-
-void rpc_sd_free(struct mg_rpc_request_info *ri, void *cb_arg, struct mg_rpc_frame_info *fi, struct mg_str args) {
-  if (NULL == s_card) {
-    //error
-    mg_rpc_send_errorf(ri, 400, "No SD found!");
-
-    return;
-  }
-  struct mbuf jsmb;
-  struct json_out jsout = JSON_OUT_MBUF(&jsmb);
-  mbuf_init(&jsmb, 0);
-  uint64_t size = mgos_sd_get_fs_size(s_card, SD_FS_UNIT_BYTES) - mgos_sd_get_fs_used(s_card, SD_FS_UNIT_BYTES);
-  json_printf(&jsout, "{sd_free: %llu}", size);
-  mg_rpc_send_responsef(ri, "%.*s", jsmb.len, jsmb.buf);
-
-  mbuf_free(&jsmb);
 }
 
 bool mgos_sdlib_init() {

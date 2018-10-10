@@ -34,7 +34,7 @@ static struct mgos_sd *s_card = NULL;
 
 static bool get_size_used(uint64_t *total_size, const char *folder);
 
-static static void unmount_sd_cb(int ev, void *ev_data, void *arg) {
+static void unmount_sd_cb(int ev, void *ev_data, void *arg) {
   (void) ev;
   (void) ev_data;
   (void) arg;

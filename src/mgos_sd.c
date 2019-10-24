@@ -15,12 +15,12 @@
  */
 #include <mgos.h>
 
-#include "esp_vfs_fat.h"
 #include "driver/sdmmc_defs.h"
 #include "driver/sdmmc_host.h"
-#include "driver/sdspi_host.h"
-#include "sdmmc_cmd.h"
 #include "driver/sdmmc_types.h"
+#include "driver/sdspi_host.h"
+#include "esp_vfs_fat.h"
+#include "sdmmc_cmd.h"
 
 #include "mgos_sd.h"
 
@@ -110,9 +110,14 @@ static struct mgos_sd *mgos_sd_open_sdmmc(const char *mount_point,
                                           bool format_if_mount_failed) {
   LOG(LL_INFO, ("Using SDMMC peripheral"));
 
+  bool use_1line = mgos_sys_config_get_sd_sdmmc_use1line();
+
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
   // To use 1-line SD mode, uncomment the following line:
-  // host.flags = SDMMC_HOST_FLAG_1BIT;
+
+  if (use_1line) {
+    host.flags = SDMMC_HOST_FLAG_1BIT;
+  }
 
   // This initializes the slot without card detect (CD) and write protect (WP)
   // signals.
@@ -123,14 +128,19 @@ static struct mgos_sd *mgos_sd_open_sdmmc(const char *mount_point,
   // GPIOs 15, 2, 4, 12, 13 should have external 10k pull-ups.
   // Internal pull-ups are not sufficient. However, enabling internal pull-ups
   // does make a difference some boards, so we do that here.
-  mgos_gpio_set_pull(15,
-                     MGOS_GPIO_PULL_UP);  // CMD, needed in 4- and 1- line modes
-  mgos_gpio_set_pull(2,
-                     MGOS_GPIO_PULL_UP);  // D0, needed in 4- and 1-line modes
-  mgos_gpio_set_pull(4, MGOS_GPIO_PULL_UP);   // D1, needed in 4-line mode only
-  mgos_gpio_set_pull(12, MGOS_GPIO_PULL_UP);  // D2, needed in 4-line mode only
-  mgos_gpio_set_pull(13,
-                     MGOS_GPIO_PULL_UP);  // D3, needed in 4- and 1-line modes
+  // CMD, needed in 4- and 1- line modes
+  mgos_gpio_set_pull(15, MGOS_GPIO_PULL_UP);
+  // D0, needed in 4- and 1-line modes
+  mgos_gpio_set_pull(2, MGOS_GPIO_PULL_UP);
+  // D3, needed in 4- and 1-line modes
+  mgos_gpio_set_pull(13, MGOS_GPIO_PULL_UP);
+
+  if (use_1line == false) {
+    // D1, needed in 4-line mode only
+    mgos_gpio_set_pull(4, MGOS_GPIO_PULL_UP);
+    // D2, needed in 4-line mode only
+    mgos_gpio_set_pull(12, MGOS_GPIO_PULL_UP);
+  }
 
   return mgos_sd_common_init(mount_point, format_if_mount_failed, &host,
                              &slot_config);

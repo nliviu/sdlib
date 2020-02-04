@@ -22,6 +22,8 @@ sources:
   - src
 
 config_schema:
+ - ["sd", "o", {title: "General SD settings"}]
+ - ["sd.max_files", "i", 5, {title: "Max. number of open files"}]
  - ["sd_spi", "o", {title: "SD SPI settings"}]
  - ["sd_spi.pin_miso", "i", 2, {title: "SD SPI miso"}]  # hardwired for Lolin32 Pro
  - ["sd_spi.pin_mosi", "i", 15, {title: "SD SPI mosi"}] # hardwired for Lolin32 Pro

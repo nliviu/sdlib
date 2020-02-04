@@ -54,7 +54,7 @@ static struct mgos_sd *mgos_sd_common_init(const char *mount_point,
        * create partition table and format the filesystem.
        */
       .format_if_mount_failed = format_if_mount_failed,
-      .max_files = 5,  ///< Max number of open files
+      .max_files = mgos_sys_config_get_sd_max_files(),  ///< Max number of open files
       /**
        * If format_if_mount_failed is set, and mount fails, format the card
        * with given allocation unit size. Must be a power of 2, between sector

@@ -24,6 +24,14 @@
 
 #include "mgos_sd.h"
 
+// DMA channel to be used by the SPI peripheral
+#if SDLIB_USE_ESP32S == 1
+// on ESP32-S2, DMA channel must be the same as host id
+#define SPI_DMA_CHAN host.slot
+#else
+#define SPI_DMA_CHAN 1
+#endif
+
 struct mgos_sd {
   sdmmc_card_t *card;
   char *mount_point;
@@ -44,7 +52,8 @@ static void unmount_sd_cb(int ev, void *ev_data, void *arg) {
 static struct mgos_sd *mgos_sd_common_init(const char *mount_point,
                                            bool format_if_mount_failed,
                                            const sdmmc_host_t *host,
-                                           const void *slot_config) {
+                                           const void *slot_config,
+                                           bool sdmmc) {
   // Options for mounting the filesystem.
   // If format_if_mount_failed is set to true, SD card will be partitioned and
   // formatted in case when mounting fails.
@@ -54,7 +63,8 @@ static struct mgos_sd *mgos_sd_common_init(const char *mount_point,
        * create partition table and format the filesystem.
        */
       .format_if_mount_failed = format_if_mount_failed,
-      .max_files = mgos_sys_config_get_sd_max_files(),  ///< Max number of open files
+      .max_files =
+          mgos_sys_config_get_sd_max_files(),  ///< Max number of open files
       /**
        * If format_if_mount_failed is set, and mount fails, format the card
        * with given allocation unit size. Must be a power of 2, between sector
@@ -75,8 +85,14 @@ static struct mgos_sd *mgos_sd_common_init(const char *mount_point,
   // Please check its source code and implement error recovery when developing
   // production applications.
   sdmmc_card_t *card = NULL;
-  esp_err_t ret = esp_vfs_fat_sdmmc_mount(mount_point, host, slot_config,
-                                          &mount_config, &card);
+  esp_err_t ret;
+  if (sdmmc) {
+    ret = esp_vfs_fat_sdmmc_mount(mount_point, host, slot_config, &mount_config,
+                                  &card);
+  } else {
+    ret = esp_vfs_fat_sdspi_mount(mount_point, host, slot_config, &mount_config,
+                                  &card);
+  }
 
   if (ret != ESP_OK) {
     if (ret == ESP_FAIL) {
@@ -143,7 +159,7 @@ static struct mgos_sd *mgos_sd_open_sdmmc(const char *mount_point,
   }
 
   return mgos_sd_common_init(mount_point, format_if_mount_failed, &host,
-                             &slot_config);
+                             &slot_config, true);
 }
 
 static struct mgos_sd *mgos_sd_open_spi(const char *mount_point,
@@ -151,20 +167,35 @@ static struct mgos_sd *mgos_sd_open_spi(const char *mount_point,
   LOG(LL_INFO, ("Using SPI peripheral"));
 
   sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-  sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
-  slot_config.gpio_miso =
-      mgos_sys_config_get_sd_spi_pin_miso();  // PIN_NUM_MISO;
-  slot_config.gpio_mosi =
-      mgos_sys_config_get_sd_spi_pin_mosi();                    // PIN_NUM_MOSI;
-  slot_config.gpio_sck = mgos_sys_config_get_sd_spi_pin_clk();  // PIN_NUM_CLK;
-  slot_config.gpio_cs = mgos_sys_config_get_sd_spi_pin_cs();    // PIN_NUM_CS;
+  int gpio_miso = mgos_sys_config_get_sd_spi_pin_miso();
+  int gpio_mosi = mgos_sys_config_get_sd_spi_pin_mosi();
+  int gpio_sck = mgos_sys_config_get_sd_spi_pin_clk();
+  int gpio_cs = mgos_sys_config_get_sd_spi_pin_cs();
   // This initializes the slot without card detect (CD) and write protect (WP)
   // signals.
   // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these
   // signals.
+  // Update to esp-idf-4.2
+  sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+  slot_config.gpio_cs = gpio_cs;
+  slot_config.host_id = host.slot;
+
+  spi_bus_config_t bus_cfg = {
+      .mosi_io_num = gpio_mosi,
+      .miso_io_num = gpio_miso,
+      .sclk_io_num = gpio_sck,
+      .quadwp_io_num = -1,
+      .quadhd_io_num = -1,
+      .max_transfer_sz = 4000,
+  };
+  esp_err_t ret = spi_bus_initialize(host.slot, &bus_cfg, SPI_DMA_CHAN);
+  if (ret != ESP_OK) {
+    LOG(LL_ERROR, ("Failed to initialize SPI bus."));
+    return NULL;
+  }
 
   return mgos_sd_common_init(mount_point, format_if_mount_failed, &host,
-                             &slot_config);
+                             &slot_config, false);
 }
 
 struct mgos_sd *mgos_sd_open(bool sdmmc, const char *mount_point,
@@ -294,7 +325,7 @@ uint64_t mgos_sd_get_fs_size(enum mgos_sd_fs_unit unit) {
     // case SD_FS_UNIT_GIGABYTES:
     //    size /= 1024;
     case SD_FS_UNIT_MEGABYTES:
-      size /= (1024*1024);
+      size /= (1024 * 1024);
       break;
     case SD_FS_UNIT_KILOBYTES:
       size /= 1024;

@@ -256,7 +256,7 @@ bool mgos_sd_list(const char *path, struct json_out *out) {
   // start the json string
   json_printf(out, "[");
   bool first = true;
-  char file_path[256];
+  char file_path[512];
   struct dirent *entry = readdir(dir);
   while (NULL != entry) {
     snprintf(file_path, sizeof(file_path), "%s/%s", buf, entry->d_name);
@@ -294,9 +294,11 @@ uint64_t mgos_sd_get_fs_size(enum mgos_sd_fs_unit unit) {
     // case SD_FS_UNIT_GIGABYTES:
     //    size /= 1024;
     case SD_FS_UNIT_MEGABYTES:
-      size /= 1024;
+      size /= (1024*1024);
+      break;
     case SD_FS_UNIT_KILOBYTES:
       size /= 1024;
+      break;
     case SD_FS_UNIT_BYTES:
       break;
   }
@@ -304,7 +306,7 @@ uint64_t mgos_sd_get_fs_size(enum mgos_sd_fs_unit unit) {
 }
 
 bool get_size_used(uint64_t *total_size, const char *folder) {
-  char full_path[256];
+  char full_path[260];
   struct stat buffer;
   int exists;
   bool resp = true;
